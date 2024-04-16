@@ -2,7 +2,7 @@
 [[ "${BASH_SOURCE[0]}" == "${0}" ]] && echo -en "\e[31mSource this file, don't run it\e[0m\n"
 
 # --------------------------------------------------------------------------------------------------
-# sshs: SSH Select
+# sshs: SSH Select (git: https://github.com/Madelo/sshs)
 #   Shell Function to search for a host in the ~/.ssh/config file and connect to it
 # Usage:
 #   - sshs: Shows  the list of hosts in the config file
