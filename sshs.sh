@@ -10,6 +10,7 @@
 #   - SSHS_MENU : string containing the list of characters available for selection in the menu,
 #                 default value: '0123456789'. The length of the string determines the maximum
 #                 size of the menu.
+#   - SSHS_CONFIG : ssh configuration file used, default value: '~/.ssh/config'
 # Result:
 #   - if 0 host found: Not found message
 #   - if 1 host found: Immediate connection
@@ -26,10 +27,11 @@ sshs () {
     local tblCom=() tblHost=() i=0 line='' hSize=0 fields=()
     local search="$*"; search=${search,,}; search="${search// /.*}"
     local menu="${SSHS_MENU:="0123456789"}"
+    local config="${SSHS_CONFIG:="$HOME/.ssh/config"}"
 
     sshs_connect() {
         echo -e "\e[32m>>> Connect to $1 <<<\e[0m"
-        ssh "$1"
+        ssh -F "${config}" "$1"
         echo -e "\e[32m>>> Disconnected from $1 <<<\e[0m"
     }
     sshs_strindex() { local x="${1%%"$2"*}"; [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"; }
@@ -46,7 +48,7 @@ sshs () {
         fi
         if [[ "${line:0:1}" == '#' ]]; then pline=${line}
         else pline=''; fi
-    done < ~/.ssh/config
+    done < "${config}"
 
     line=''; for ((i=0;i<hSize;i++)); do line="${line} "; done
     for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
