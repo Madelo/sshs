@@ -6,12 +6,17 @@
 # Usage:
 #   - sshs: Shows  the list of hosts in the config file
 #   - sshs [param]: Searches the config file for the corresponding hosts. (ignore case)
+# Variable:
+#   - SSHS_MENU : string containing the list of characters available for selection in the menu,
+#                 default value: '0123456789'. The length of the string determines the maximum
+#                 size of the menu.
 # Result:
 #   - if 0 host found: Not found message
 #   - if 1 host found: Immediate connection
-#   - if < 10 hosts found : Selection menu and connection to the chosen host
-#   - if >= 10 results: Show host list and exit
+#   - if <= (size SSHS_MENU) hosts found : Selection menu and connection to the chosen host
+#   - if > (size SSHS_MENU) results: Show host list and exit
 # Advice:
+#   - set the menu choice, example: export SSHS_MENU='12345'
 #   - Source this file in .bashrc
 #   - In  the ~/.ssh/config file, add a comment '#' with a description on the line above the 'Host'
 #     element. This line is used for the search and the list of results displayed by the function.
@@ -20,13 +25,14 @@
 sshs () {
     local tblCom=() tblHost=() i=0 line='' hSize=0 fields=()
     local search="$*"; search=${search,,}; search="${search// /.*}"
+    local menu="${SSHS_MENU:="0123456789"}"
 
     sshs_connect() {
         echo -e "\e[32m>>> Connect to $1 <<<\e[0m"
         ssh "$1"
         echo -e "\e[32m>>> Disconnected from $1 <<<\e[0m"
     }
-    get_column() { local fields; read -ra fields <<< "$2"; echo "${fields[$1]}"; }
+    sshs_strindex() { local x="${1%%"$2"*}"; [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"; }
 
     while IFS= read -r line; do
         if [[ "${line,,}" =~ ^host[[:space:]] ]]; then
@@ -51,13 +57,13 @@ sshs () {
         echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ~/.ssh/config\e[0m"
     elif (( ${#tblHost[@]} == 1 )); then
         sshs_connect "${tblHost[0]//[[:space:]]/}"
-    elif (( ${#tblHost[@]} < 10 )); then
+    elif (( ${#tblHost[@]} <= ${#menu} )); then
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
-            [[ "${tblCom[i]}" != "" ]] && echo -e "\e[32m$i\e[0m) ${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
-                                       || echo -e "\e[32m$i\e[0m) ${tblHost[i]}"
+            [[ "${tblCom[i]}" != "" ]] && echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
+                                       || echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}"
         done
         echo -ne "Choose an option: "; read -rn1 i; echo
-        [[ "$i" =~ ^[0-9]+$ ]] && (( i < ${#tblHost[@]} )) && sshs_connect "${tblHost[i]//[[:space:]]/}"
+        [[ "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}"
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
