@@ -1,5 +1,4 @@
 #!/bin/bash
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && echo -en "\e[31mSource this file, don't run it\e[0m\n"
 
 # --------------------------------------------------------------------------------------------------
 # sshs: SSH Select (git: https://github.com/Madelo/sshs)
@@ -12,14 +11,14 @@
 #   - if 1 host found: Immediate connection
 #   - if < 10 hosts found : Selection menu and connection to the chosen host
 #   - if >= 10 results: Show host list and exit
-# Advice: 
+# Advice:
 #   - Source this file in .bashrc
-#   - In  the ~/.ssh/config file, add a comment '#' with a description on the line above the 'Host' 
+#   - In  the ~/.ssh/config file, add a comment '#' with a description on the line above the 'Host'
 #     element. This line is used for the search and the list of results displayed by the function.
 #   - If the comment line contains sshs-off, the host is ignored
 # --------------------------------------------------------------------------------------------------
 sshs () {
-    local tblCom=() tblHost=() i=0 line='' hSize=0 
+    local tblCom=() tblHost=() i=0 line='' hSize=0 fields=()
     local search="$*"; search=${search,,}; search="${search// /.*}"
 
     sshs_connect() {
@@ -32,10 +31,11 @@ sshs () {
     while IFS= read -r line; do
         if [[ "${line,,}" =~ ^host[[:space:]] ]]; then
             if [[ "${pline,,}" != *sshs-off* && "${line,,} ${pline,,}" =~ $search ]]; then
-                tblHost[i]=$(get_column 1 "$line")
-                tblCom[i]="${pline}" 
-                (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}                   
-                (( i++ ))                
+                read -ra fields <<< "$line"
+                tblHost[i]="${fields[1]}"
+                tblCom[i]="${pline}"
+                (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}
+                (( i++ ))
             fi
         fi
         if [[ "${line:0:1}" == '#' ]]; then pline=${line}
@@ -45,7 +45,7 @@ sshs () {
     line=''; for ((i=0;i<hSize;i++)); do line="${line} "; done
     for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
         tblHost[i]="${tblHost[i]:0:$hSize}${line:0:$((hSize-${#tblHost[i]}))}"
-    done   
+    done
 
     if (( ${#tblHost[@]} == 0 )); then
         echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ~/.ssh/config\e[0m"
@@ -62,6 +62,8 @@ sshs () {
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
                                        || echo -e "${tblHost[i]}"
-        done    
-    fi    
+        done
+    fi
 }
+
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && sshs "$@"
