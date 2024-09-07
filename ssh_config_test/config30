@@ -1,0 +1,124 @@
+# env=prd,desc='VDI linux'
+Host vdi
+    HostName 127.0.0.1
+
+# env=lab,desc='Proxmox Virtual Environment'
+Host pve.lab
+    HostName 127.0.0.1
+
+# env=dev,desc='Proxmox Virtual Environment'
+Host pve.dev
+    HostName 127.0.0.1
+
+# env=tst,desc='Proxmox Virtual Environment'
+Host pve.tst
+    HostName 127.0.0.1
+
+# env=prd,desc='Proxmox Virtual Environment'
+Host pve1.prd
+    HostName 127.0.0.1
+
+# env=prd,desc='Proxmox Virtual Environment'
+Host pve2.prd
+    HostName 127.0.0.1
+
+# env=lab,desc='jumphost bastion'
+Host lab_bastion
+    HostName 127.0.0.1
+
+# env=dev,desc='jumphost bastion'
+Host dev_bastion
+    HostName 127.0.0.1
+
+# env=tst,desc='jumphost bastion'
+Host tst_bastion
+    HostName 127.0.0.1
+
+# env=prd,desc='jumphost bastion'
+Host prd_bastion
+    HostName 127.0.0.1
+
+# env=lab,desc='k3s kubernetes master'
+Host lab_k3s_master
+    HostName 127.0.0.1
+
+# env=lab,desc='k3s kubernetes worker'
+Host lab_k3s_worker1
+    HostName 127.0.0.1
+
+# env=lab,desc='k3s kubernetes worker'
+Host lab_k3s_worker2
+    HostName 127.0.0.1
+
+# env=lab,desc='k3s kubernetes worker'
+Host lab_k3s_worker3
+    HostName 127.0.0.1
+
+# env=dev,desc='k3s kubernetes master'
+Host dev_k3s_master
+    HostName 127.0.0.1
+
+# env=dev,desc='k3s kubernetes worker'
+Host dev_k3s_worker1
+    HostName 127.0.0.1
+
+# env=dev,desc='k3s kubernetes worker'
+Host dev_k3s_worker2
+    HostName 127.0.0.1
+
+# env=dev,desc='k3s kubernetes worker'
+Host dev_k3s_worker3
+    HostName 127.0.0.1
+
+# env=tst,desc='k3s kubernetes master'
+Host tst_k3s_master
+    HostName 127.0.0.1
+
+# env=tst,desc='k3s kubernetes worker'
+Host tst_k3s_worker1
+    HostName 127.0.0.1
+
+# env=tst,desc='k3s kubernetes worker'
+Host tst_k3s_worker2
+    HostName 127.0.0.1
+
+# env=tst,desc='k3s kubernetes worker'
+Host tst_k3s_worker3
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes master'
+Host prd_k3s_master1
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes master'
+Host prd_k3s_master2
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes master'
+Host prd_k3s_master3
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes worker'
+Host prd_k3s_worker1
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes worker'
+Host prd_k3s_worker2
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes worker'
+Host prd_k3s_worker3
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes worker'
+Host prd_k3s_worker4
+    HostName 127.0.0.1
+
+# env=prd,desc='k3s kubernetes worker'
+Host prd_k3s_worker5
+    HostName 127.0.0.1
+
+# Global (sshs-off)
+Host *
+    AddKeysToAgent yes
+    IdentityFile "~\.ssh\id_ecdsa"
