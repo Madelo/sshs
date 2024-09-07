@@ -1,0 +1,24 @@
+# dev, jumphost, bastion
+Host dev_bastion
+    HostName 192.168.10.2
+
+# dev, k3s, kubernetes, master
+Host dev_k3s_master
+    HostName 192.168.10.3
+
+# dev, k3s, kubernetes, worker
+Host dev_k3s_worker1
+    HostName 192.168.10.4
+
+# dev, k3s, kubernetes, worker
+Host dev_k3s_worker2
+    HostName 192.168.10.5
+
+# dev, k3s, kubernetes, worker
+Host dev_k3s_worker3
+    HostName 192.168.10.6
+
+# Global (sshs-off)
+Host *
+    AddKeysToAgent yes
+    IdentityFile "~\.ssh\id_ecdsa"
