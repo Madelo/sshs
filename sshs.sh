@@ -65,7 +65,7 @@ sshs () {
                                        || echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}"
         done
         echo -ne "Choose an option: "; read -rn1 i; echo
-        [[ "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}"
+        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}"
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
