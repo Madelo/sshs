@@ -25,7 +25,7 @@
 # --------------------------------------------------------------------------------------------------
 sshs () {
     local tblCom=() tblHost=() i=0 line='' hSize=0 fields=()
-    local search="$*"; search=${search,,}; search="${search// /.*}"
+    local search="$*"; search=${search,,}; search="${search// /.*}"; search=${search:-'.*'}
     local menu="${SSHS_MENU:="0123456789"}"
     local config="${SSHS_CONFIG:="$HOME/.ssh/config"}"
 
