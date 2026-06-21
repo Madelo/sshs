@@ -23,18 +23,31 @@
 #     element. This line is used for the search and the list of results displayed by the function.
 #   - If the comment line contains sshs-off, the host is ignored
 # --------------------------------------------------------------------------------------------------
-sshs () {
-    local tblCom=() tblHost=() i=0 line='' hSize=0 fields=()
-    local search="$*"; search=${search,,}; search="${search// /.*}"; search=${search:-'.*'}
-    local menu="${SSHS_MENU:="0123456789"}"
-    local config="${SSHS_CONFIG:="$HOME/.ssh/config"}"
+sshs_connect() {
+    local host="$1" config="$2"
+    echo -e "\e[32m>>> Connect to $host <<<\e[0m"
+    ssh -F "${config}" "$host"
+    local ret=$?
+    if (( ret == 255 )); then
+        echo -e "\e[31m>>> Connection to $host failed <<<\e[0m"
+    else
+        echo -e "\e[32m>>> Disconnected from $host (exit $ret) <<<\e[0m"
+    fi
+    return $ret
+}
+sshs_strindex() { local x="${1%%"$2"*}"; [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"; }
 
-    sshs_connect() {
-        echo -e "\e[32m>>> Connect to $1 <<<\e[0m"
-        ssh -F "${config}" "$1"
-        echo -e "\e[32m>>> Disconnected from $1 <<<\e[0m"
-    }
-    sshs_strindex() { local x="${1%%"$2"*}"; [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"; }
+sshs () {
+    local tblCom=() tblHost=() i=0 line='' hSize=0 fields=() padding=''
+    local regex=0
+    [[ "$1" == "-r" ]] && { regex=1; shift; }
+    local search="$*"; search=${search,,}
+    if (( ! regex )) && [[ -z "${SSHS_REGEX:-}" ]]; then
+        search=$(sed 's/[].[\*+?^${}()|\\]/\\&/g' <<< "$search")
+    fi
+    search="${search// /.*}"; search=${search:-'.*'}
+    local menu="${SSHS_MENU:-"0123456789"}"
+    local config="${SSHS_CONFIG:-"$HOME/.ssh/config"}"
 
     while IFS= read -r line; do
         if [[ "${line,,}" =~ ^host[[:space:]] ]]; then
@@ -50,22 +63,23 @@ sshs () {
         else pline=''; fi
     done < "${config}"
 
-    line=''; for ((i=0;i<hSize;i++)); do line="${line} "; done
+    padding=''; for ((i=0;i<hSize;i++)); do padding="${padding} "; done
     for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
-        tblHost[i]="${tblHost[i]:0:$hSize}${line:0:$((hSize-${#tblHost[i]}))}"
+        tblHost[i]="${tblHost[i]:0:$hSize}${padding:0:$((hSize-${#tblHost[i]}))}"
     done
 
     if (( ${#tblHost[@]} == 0 )); then
-        echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ~/.ssh/config\e[0m"
+        echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ${config}\e[0m"
     elif (( ${#tblHost[@]} == 1 )); then
-        sshs_connect "${tblHost[0]//[[:space:]]/}"
+        sshs_connect "${tblHost[0]//[[:space:]]/}" "$config"
     elif (( ${#tblHost[@]} <= ${#menu} )); then
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
                                        || echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}"
         done
-        echo -ne "Choose an option: "; read -rn1 i; echo
-        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}"
+        echo -ne "Choose an option (other key to cancel): "; read -rn1 i; echo
+        # Only connect if key is in menu — sshs_strindex returns -1 otherwise, guarded here
+        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}" "$config"
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
