@@ -6,11 +6,13 @@
 # Usage:
 #   - sshs: Shows  the list of hosts in the config file
 #   - sshs [param]: Searches the config file for the corresponding hosts. (ignore case)
+#   - sshs -r [param]: Searches using regex pattern (metacharacters interpreted)
 # Variable:
 #   - SSHS_MENU : string containing the list of characters available for selection in the menu,
 #                 default value: '0123456789'. The length of the string determines the maximum
 #                 size of the menu.
 #   - SSHS_CONFIG : ssh configuration file used, default value: '~/.ssh/config'
+#   - SSHS_REGEX : when set, enables regex mode (same as -r flag)
 # Result:
 #   - if 0 host found: Not found message
 #   - if 1 host found: Immediate connection
