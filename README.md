@@ -7,6 +7,35 @@ Shell function to search for a host in ~/.ssh/config and connect to it
 - `sshs`: Shows the list of hosts in the config file
 - `sshs [param]`: Searches the config file for the corresponding hosts (case insensitive)
 - `sshs -r [param]`: Searches using regex pattern (regex metacharacters are interpreted)
+- `sshs [params...] [-- ssh_options...]`: Pass SSH options after `--` separator
+
+## Passing SSH options
+
+Use `--` to separate search terms from SSH options. Everything after `--` is passed directly to the `ssh` command.
+
+```sh
+# Agent forwarding + custom port
+sshs dev master -- -A -p 2222
+
+# Verbose mode + ProxyJump
+sshs k3s worker -- -v -J user@bastion
+
+# Local port forwarding (no search = all hosts via menu)
+sshs -- -L 8080:localhost:80
+
+# With regex + identity file
+sshs -r 'dev_.*worker' -- -i ~/.ssh/dev_key
+```
+
+### Persistent options via `SSHS_SSH_OPTS`
+
+Set `SSHS_SSH_OPTS` to append options to every SSH connection. Command-line options from `--` are placed before `SSHS_SSH_OPTS` in the final `ssh` command.
+
+```sh
+export SSHS_SSH_OPTS="-A -p 2222"
+sshs dev master          # Always uses agent forwarding on port 2222
+sshs dev master -- -v    # Adds -v on top of SSHS_SSH_OPTS
+```
 
 ## Config variables
 
@@ -16,6 +45,8 @@ Shell function to search for a host in ~/.ssh/config and connect to it
 - `SSHS_CONFIG`: SSH configuration file used, default value: `~/.ssh/config`
 - `SSHS_REGEX`: When set to any value, enables regex mode (metacharacters like `.`, `*`, `[` are interpreted).
               Can also be enabled per-call with the `-r` flag.
+- `SSHS_SSH_OPTS`: Additional SSH options appended to every connection. Options passed via `--` on the
+                command line take priority (placed before `SSHS_SSH_OPTS`).
 
 ## Regex mode
 

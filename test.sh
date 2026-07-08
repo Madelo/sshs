@@ -44,5 +44,14 @@ check "Prompt 'other key to cancel' visible"   "other key to cancel"   'sshs'
 check "Échec connexion SSH → failed"           "failed"                'sshs dev_k3s_master'
 
 echo ""
+echo "--- ssh options ---"
+
+# Verify -- separator: SSH opts are not treated as search terms
+check "Séparateur -- : options SSH ignorées pour recherche" "Connect to dev_k3s_master" 'sshs dev master -- -v'
+check "Séparateur -- : menu avec options SSH (vérifie pas dans recherche)" "dev_k3s_worker1" 'sshs k3s worker -- -p 2222'
+check "Séparateur -- : sans recherche, toutes les entrées" "dev_bastion" 'sshs -- -v'
+check "SSHS_SSH_OPTS n'interfère pas avec la recherche"      "Connect to dev_k3s_master" 'SSHS_SSH_OPTS=-v sshs master'
+
+echo ""
 echo "=== $PASS PASS, $FAIL FAIL ==="
 exit $FAIL

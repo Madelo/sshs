@@ -7,12 +7,16 @@
 #   - sshs: Shows  the list of hosts in the config file
 #   - sshs [param]: Searches the config file for the corresponding hosts. (ignore case)
 #   - sshs -r [param]: Searches using regex pattern (metacharacters interpreted)
+#   - sshs [params...] [-- ssh_options...]: Pass SSH options after '--' separator
+#     Example: sshs dev master -- -A -p 2222
 # Variable:
 #   - SSHS_MENU : string containing the list of characters available for selection in the menu,
 #                 default value: '0123456789'. The length of the string determines the maximum
 #                 size of the menu.
 #   - SSHS_CONFIG : ssh configuration file used, default value: '~/.ssh/config'
 #   - SSHS_REGEX : when set, enables regex mode (same as -r flag)
+#   - SSHS_SSH_OPTS : additional SSH options appended to every connection
+#     Example: export SSHS_SSH_OPTS="-A -p 2222"
 # Result:
 #   - if 0 host found: Not found message
 #   - if 1 host found: Immediate connection
@@ -27,8 +31,9 @@
 # --------------------------------------------------------------------------------------------------
 sshs_connect() {
     local host="$1" config="$2"
+    shift 2
     echo -e "\e[32m>>> Connect to $host <<<\e[0m"
-    ssh -F "${config}" "$host"
+    ssh -F "${config}" "$@" ${SSHS_SSH_OPTS:-} "$host"
     local ret=$?
     if (( ret == 255 )); then
         echo -e "\e[31m>>> Connection to $host failed <<<\e[0m"
@@ -43,7 +48,20 @@ sshs () {
     local tblCom=() tblHost=() i=0 line='' hSize=0 fields=() padding=''
     local regex=0
     [[ "$1" == "-r" ]] && { regex=1; shift; }
-    local search="$*"; search=${search,,}
+    # Split args on "--": before = search terms, after = ssh options
+    local search_args=() ssh_opts=() found_sep=0
+    for arg in "$@"; do
+        if (( ! found_sep )) && [[ "$arg" == "--" ]]; then
+            found_sep=1
+            continue
+        fi
+        if (( found_sep )); then
+            ssh_opts+=("$arg")
+        else
+            search_args+=("$arg")
+        fi
+    done
+    local search="${search_args[*]}"; search=${search,,}
     if (( ! regex )) && [[ -z "${SSHS_REGEX:-}" ]]; then
         search=$(sed 's/[].[\*+?^${}()|\\]/\\&/g' <<< "$search")
     fi
@@ -73,7 +91,7 @@ sshs () {
     if (( ${#tblHost[@]} == 0 )); then
         echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ${config}\e[0m"
     elif (( ${#tblHost[@]} == 1 )); then
-        sshs_connect "${tblHost[0]//[[:space:]]/}" "$config"
+        sshs_connect "${tblHost[0]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     elif (( ${#tblHost[@]} <= ${#menu} )); then
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
@@ -81,7 +99,7 @@ sshs () {
         done
         echo -ne "Choose an option (other key to cancel): "; read -rn1 i; echo
         # Only connect if key is in menu — sshs_strindex returns -1 otherwise, guarded here
-        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}" "$config"
+        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
