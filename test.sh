@@ -53,5 +53,40 @@ check "Séparateur -- : sans recherche, toutes les entrées" "dev_bastion" 'sshs
 check "SSHS_SSH_OPTS n'interfère pas avec la recherche"      "Connect to dev_k3s_master" 'SSHS_SSH_OPTS=-v sshs master'
 
 echo ""
+echo "--- menu bounds ---"
+
+# Helper: run sshs with simulated keypress input
+run_with_key() {
+    local key="$1" cmd="$2"
+    SSHS_CONFIG=ssh_config_test/config5 bash -c "source sshs.sh; $cmd" <<<"$key" 2>&1 || true
+}
+
+# Test: within bounds — press "1" in 3-host menu (workers 1,2,3) → should connect to index 1 = worker2
+out=$(run_with_key "1" "sshs worker")
+clean=$(echo "$out" | sed 's/\x1b\[[0-9;]*m//g')
+if echo "$clean" | grep -qF "Connect to dev_k3s_worker2"; then
+    echo "  ✓ Menu: touche dans les bornes → connexion"
+    ((PASS++))
+else
+    echo "  ✗ Menu: touche dans les bornes → connexion"
+    echo "    expected: Connect to dev_k3s_worker2"
+    echo "    got:      $out"
+    ((FAIL++))
+fi
+
+# Test: out of bounds — press "5" in 3-host menu → should NOT attempt connection
+out=$(run_with_key "5" "sshs worker")
+clean=$(echo "$out" | sed 's/\x1b\[[0-9;]*m//g')
+if echo "$clean" | grep -qF "Connect to"; then
+    echo "  ✗ Menu: touche hors bornes → pas de connexion"
+    echo "    unexpected connection attempt in output"
+    echo "    got: $out"
+    ((FAIL++))
+else
+    echo "  ✓ Menu: touche hors bornes → pas de connexion"
+    ((PASS++))
+fi
+
+echo ""
 echo "=== $PASS PASS, $FAIL FAIL ==="
 exit $FAIL

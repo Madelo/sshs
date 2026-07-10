@@ -98,8 +98,10 @@ sshs () {
                                        || echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}"
         done
         echo -ne "Choose an option (other key to cancel): "; read -rn1 i; echo
-        # Only connect if key is in menu — sshs_strindex returns -1 otherwise, guarded here
-        [[ "$i" != "" && "$menu" == *"$i"* ]] && sshs_connect "${tblHost[$(sshs_strindex "$menu" "$i")]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
+        # Only connect if key is in menu AND within range of available hosts
+        local idx; idx=$(sshs_strindex "$menu" "$i")
+        [[ "$i" != "" && "$idx" != "-1" && "$idx" -lt "${#tblHost[@]}" ]] && \
+            sshs_connect "${tblHost[$idx]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
