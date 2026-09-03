@@ -17,6 +17,8 @@
 #   - SSHS_REGEX : when set, enables regex mode (same as -r flag)
 #   - SSHS_SSH_OPTS : additional SSH options appended to every connection
 #     Example: export SSHS_SSH_OPTS="-A -p 2222"
+#   - 'Include' directives are followed: included files are read recursively, globs
+#     and '~' are expanded, and relative paths are resolved against ~/.ssh
 # Result:
 #   - if 0 host found: Not found message
 #   - if 1 host found: Immediate connection
@@ -33,6 +35,7 @@ sshs_connect() {
     local host="$1" config="$2"
     shift 2
     echo -e "\e[32m>>> Connect to $host <<<\e[0m"
+    # shellcheck disable=SC2086 # SSHS_SSH_OPTS is intentionally word-split into options
     ssh -F "${config}" "$@" ${SSHS_SSH_OPTS:-} "$host"
     local ret=$?
     if (( ret == 255 )); then
@@ -42,10 +45,103 @@ sshs_connect() {
     fi
     return $ret
 }
-sshs_strindex() { local x="${1%%"$2"*}"; [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"; }
+sshs_strindex() { local -n out_ref="$1"; local x="${2%%"$3"*}"; [[ "$x" == "$2" ]] && out_ref=-1 || out_ref="${#x}"; }
+
+# Escape regex metacharacters so the search is treated as literal text.
+# Pure bash, no fork: writes into the nameref variable (no command substitution),
+# which matters for parse performance on large config files.
+sshs_escape_regex() {
+    local -n out_ref="$1"
+    local s="$2" c='' i
+    out_ref=''
+    for (( i = 0; i < ${#s}; i++ )); do
+        c="${s:i:1}"
+        case "$c" in
+            ']'|'.'|'['|\\|'*'|'+'|'?'|'^'|'$'|'{'|'}'|'('|')'|'|') out_ref+="\\$c" ;;
+            *) out_ref+="$c" ;;
+        esac
+    done
+}
+
+# Read an SSH config file, collecting hosts (recursively following 'Include').
+# Appends to the caller's tblHost/tblCom/hSize/i via dynamic scoping, and reads
+# $search from the caller. 'pline' is local to each file (comment scope).
+# $2 = include depth, guarding against circular includes (ssh caps at 16).
+sshs_read_config() {
+    local file="$1" depth="${2:-0}" line='' pline='' fields=() j
+    (( depth > 16 )) && return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Include directive: process included files in place
+        if [[ "$line" =~ ^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]([[:space:]]+(.*))?$ ]]; then
+            sshs_include "${BASH_REMATCH[2]}" "$((depth + 1))"
+            continue
+        fi
+        if [[ "${line,,}" =~ ^[[:space:]]*host[[:space:]] ]]; then
+            if [[ "${pline,,}" != *sshs-off* && "${line,,} ${pline,,}" =~ $search ]]; then
+                read -ra fields <<< "$line"
+                for (( j = 1; j < ${#fields[@]}; j++ )); do
+                    tblHost[i]="${fields[j]}"
+                    tblCom[i]="${pline}"
+                    (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}
+                    (( i++ ))
+                done
+            fi
+        fi
+        if [[ "$line" =~ ^[[:space:]]*# ]]; then pline=${line}
+        else pline=''; fi
+    done < "$file"
+}
+
+# Expand the argument list of an 'Include' directive and read each matched file.
+sshs_include() {
+    local tmp="$1" depth="${2:-0}" buf='' c='' inq=0 pat='' g=''
+    local -a toks=()
+    # Tokenize on whitespace, honouring double quotes
+    while [[ -n "$tmp" ]]; do
+        c="${tmp:0:1}"; tmp="${tmp:1}"
+        if [[ "$c" == '"' ]]; then
+            (( inq ^= 1 ))
+        elif [[ "$c" == ' ' || "$c" == $'\t' ]]; then
+            if (( ! inq )); then
+                [[ -n "$buf" ]] && { toks+=("$buf"); buf=''; }
+            else
+                buf+="$c"
+            fi
+        else
+            buf+="$c"
+        fi
+    done
+    [[ -n "$buf" ]] && toks+=("$buf")
+
+    for pat in "${toks[@]}"; do
+        [[ -z "$pat" ]] && continue
+        # Expand leading ~ (and ~user) to the home directory
+        if [[ "$pat" == "~" ]]; then
+            pat="$HOME"
+        elif [[ "$pat" =~ ^~([^/]*)(/.*)?$ ]]; then
+            local un="${BASH_REMATCH[1]}" rest="${BASH_REMATCH[2]}"
+            if [[ -z "$un" ]]; then
+                pat="$HOME${rest}"
+            else
+                local uh; uh=$(getent passwd "$un" 2>/dev/null)
+                if [[ -n "$uh" ]]; then
+                    uh=${uh#*:}; uh=${uh#*:}; uh=${uh#*:}; uh=${uh#*:}; uh=${uh#*:}
+                    uh=${uh%%:*}
+                    pat="$uh${rest}"
+                fi
+            fi
+        fi
+        # Relative paths are resolved against ~/.ssh (user config)
+        [[ "$pat" != /* ]] && pat="$HOME/.ssh/$pat"
+        # Glob-expand in place; patterns that match nothing are silently ignored
+        for g in $pat; do
+            [[ -f "$g" ]] && sshs_read_config "$g" "$depth"
+        done
+    done
+}
 
 sshs () {
-    local tblCom=() tblHost=() i=0 line='' hSize=0 fields=() padding=''
+    local tblCom=() tblHost=() i=0 hSize=0 padding=''
     local regex=0
     [[ "$1" == "-r" ]] && { regex=1; shift; }
     # Split args on "--": before = search terms, after = ssh options
@@ -62,26 +158,20 @@ sshs () {
         fi
     done
     local search="${search_args[*]}"; search=${search,,}
+    local shown_search="${search:-'.*'}"
     if (( ! regex )) && [[ -z "${SSHS_REGEX:-}" ]]; then
-        search=$(sed 's/[].[\*+?^${}()|\\]/\\&/g' <<< "$search")
+        sshs_escape_regex search "$search"
+        search="${search// /.*}"
     fi
-    search="${search// /.*}"; search=${search:-'.*'}
+    search=${search:-'.*'}
     local menu="${SSHS_MENU:-"0123456789"}"
     local config="${SSHS_CONFIG:-"$HOME/.ssh/config"}"
+    if [[ ! -f "$config" ]]; then
+        echo -e "\e[31msshs: config file not found: ${config}\e[0m" >&2
+        return 1
+    fi
 
-    while IFS= read -r line; do
-        if [[ "${line,,}" =~ ^host[[:space:]] ]]; then
-            if [[ "${pline,,}" != *sshs-off* && "${line,,} ${pline,,}" =~ $search ]]; then
-                read -ra fields <<< "$line"
-                tblHost[i]="${fields[1]}"
-                tblCom[i]="${pline}"
-                (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}
-                (( i++ ))
-            fi
-        fi
-        if [[ "${line:0:1}" == '#' ]]; then pline=${line}
-        else pline=''; fi
-    done < "${config}"
+    sshs_read_config "$config"
 
     padding=''; for ((i=0;i<hSize;i++)); do padding="${padding} "; done
     for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
@@ -89,7 +179,7 @@ sshs () {
     done
 
     if (( ${#tblHost[@]} == 0 )); then
-        echo -e "\e[31m${FUNCNAME[0]}: '$search' not found in ${config}\e[0m"
+        echo -e "\e[31m${FUNCNAME[0]}: '$shown_search' not found in ${config}\e[0m"
     elif (( ${#tblHost[@]} == 1 )); then
         sshs_connect "${tblHost[0]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     elif (( ${#tblHost[@]} <= ${#menu} )); then
@@ -99,7 +189,7 @@ sshs () {
         done
         echo -ne "Choose an option (other key to cancel): "; read -rn1 i; echo
         # Only connect if key is in menu AND within range of available hosts
-        local idx; idx=$(sshs_strindex "$menu" "$i")
+        local idx; sshs_strindex idx "$menu" "$i"
         [[ "$i" != "" && "$idx" != "-1" && "$idx" -lt "${#tblHost[@]}" ]] && \
             sshs_connect "${tblHost[$idx]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     else

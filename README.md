@@ -2,6 +2,10 @@
 
 Shell function to search for a host in ~/.ssh/config and connect to it
 
+## Requirements
+
+Bash 4.3 or later (uses `local -n` namerefs and `${var,,}` lowercase expansion).
+
 ## Usage
 
 - `sshs`: Shows the list of hosts in the config file
@@ -37,11 +41,37 @@ sshs dev master          # Always uses agent forwarding on port 2222
 sshs dev master -- -v    # Adds -v on top of SSHS_SSH_OPTS
 ```
 
+## Include directive
+
+`Include` directives in the SSH config are followed. Included files are read recursively in place, so hosts appear in the same order `ssh` would process them.
+
+- Glob wildcards (`*`, `?`) are expanded
+- `~` and `~user` are expanded to the home directory
+- Relative paths are resolved against `~/.ssh` (as with a user SSH config)
+- Patterns that match nothing are silently ignored (no error)
+- The `sshs-off` comment works inside included files too
+
+```sh
+# ~/.ssh/config
+Include ~/.ssh/conf.d/*.conf
+Include company/*.conf
+```
+
+```sh
+$ sshs
+0) dev_bastion      # dev, jumphost, bastion
+1) prd_k3s_worker1  # (from conf.d/servers.conf)
+...
+```
+
+Note: `Include` inside `Match`/`Host` blocks is processed unconditionally (conditional inclusion is not evaluated). Relative `Include` paths are always resolved against `~/.ssh`; a system configuration under `/etc/ssh` is not specially handled (unlike `ssh`, which resolves them against `/etc/ssh`).
+
 ## Config variables
 
 - `SSHS_MENU`: String containing the list of characters available for selection in the menu,
               default value: `0123456789`. The length of the string determines the maximum
-              size of the menu.
+              size of the menu. Use single-byte (ASCII) characters only — menu selection reads
+              one byte at a time, so multibyte characters would break it.
 - `SSHS_CONFIG`: SSH configuration file used, default value: `~/.ssh/config`
 - `SSHS_REGEX`: When set to any value, enables regex mode (metacharacters like `.`, `*`, `[` are interpreted).
               Can also be enabled per-call with the `-r` flag.
@@ -61,6 +91,8 @@ or:
 ```sh
 SSHS_REGEX=1 sshs 'dev_.*master'
 ```
+
+In regex mode, spaces are treated literally (they are not converted to `.*` as in the default multi-word mode). Use an explicit `.*` to match across words.
 
 ## Result
 

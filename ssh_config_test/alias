@@ -1,0 +1,3 @@
+# multi-alias host
+Host alias_one alias_two
+    HostName 192.0.2.1

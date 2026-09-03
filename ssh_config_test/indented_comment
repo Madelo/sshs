@@ -1,0 +1,12 @@
+# off host (indented sshs-off comment)
+  # sshs-off
+Host off_host
+    HostName 192.0.2.1
+
+# visible host 1
+Host visible_one
+    HostName 192.0.2.1
+
+# visible host 2
+Host visible_two
+    HostName 192.0.2.1

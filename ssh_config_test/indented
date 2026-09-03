@@ -1,0 +1,7 @@
+# indented host (leading whitespace on the Host line)
+  Host indented_host
+    HostName 192.0.2.1
+
+# plain host
+Host plain_host
+    HostName 192.0.2.1
