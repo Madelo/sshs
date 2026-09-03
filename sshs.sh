@@ -71,6 +71,7 @@ sshs_read_config() {
     local file="$1" depth="${2:-0}" line='' pline='' fields=() j
     (( depth > 16 )) && return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"  # tolerate CRLF line endings
         # Include directive: process included files in place
         if [[ "$line" =~ ^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]([[:space:]]+(.*))?$ ]]; then
             sshs_include "${BASH_REMATCH[2]}" "$((depth + 1))"

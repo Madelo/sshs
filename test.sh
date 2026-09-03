@@ -242,6 +242,27 @@ else
 fi
 
 echo ""
+echo "--- CRLF line endings ---"
+
+# A CRLF included file must not leak a carriage return into host names
+crlf_dir=$(mktemp -d)
+mkdir -p "$crlf_dir/.ssh/conf.d"
+printf '# local\nHost local_one\n    HostName 192.0.2.1\n\nInclude conf.d/*\n' > "$crlf_dir/.ssh/config"
+printf '# included CRLF\r\nHost inc_crlf\r\n    HostName 192.0.2.1\r\n' > "$crlf_dir/.ssh/conf.d/inc_crlf"
+
+out=$(HOME="$crlf_dir" bash -c "source sshs.sh; sshs" </dev/null 2>&1) || true
+clean=$(strip_ansi "$out")
+if echo "$clean" | grep -qF "inc_crlf" && ! echo "$clean" | grep -q $'\r'; then
+    echo "  ✓ CRLF included file: host name clean (no carriage return)"
+    ((PASS++))
+else
+    echo "  ✗ CRLF included file: host name clean"
+    echo "    got: $out"
+    ((FAIL++))
+fi
+rm -rf "$crlf_dir"
+
+echo ""
 echo "--- performance (>500 hosts, >10 Include files) ---"
 
 # Versioned fixture in ssh_config_test/perf/ (deterministic and verifiable):

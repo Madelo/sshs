@@ -46,7 +46,7 @@ sshs dev master -- -v    # Adds -v on top of SSHS_SSH_OPTS
 `Include` directives in the SSH config are followed. Included files are read recursively in place, so hosts appear in the same order `ssh` would process them.
 
 - Glob wildcards (`*`, `?`) are expanded
-- `~` and `~user` are expanded to the home directory
+- `~` and `~user` are expanded to the home directory (`~user` requires `getent`, which is absent in Git Bash on Windows — such an include is silently ignored)
 - Relative paths are resolved against `~/.ssh` (as with a user SSH config)
 - Patterns that match nothing are silently ignored (no error)
 - The `sshs-off` comment works inside included files too
