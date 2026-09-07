@@ -1,10 +1,18 @@
 # SSH Select - command sshs
 
-Shell function to search for a host in ~/.ssh/config and connect to it
+Shell script to search for a host in ~/.ssh/config and connect to it
 
 ## Requirements
 
 Bash 4.3 or later (uses `local -n` namerefs and `${var,,}` lowercase expansion).
+
+The script must be **executed directly** — it refuses to be sourced. A sourced run
+would inherit the calling shell's state (e.g. a custom `IFS`), which silently breaks
+the config parsing. Install it in your `PATH` instead:
+
+```sh
+cp sshs.sh ~/.local/bin/sshs   # or any directory in $PATH
+```
 
 ## Usage
 
@@ -45,7 +53,8 @@ sshs dev master -- -v    # Adds -v on top of SSHS_SSH_OPTS
 
 `Include` directives in the SSH config are followed. Included files are read recursively in place, so hosts appear in the same order `ssh` would process them.
 
-- Glob wildcards (`*`, `?`) are expanded
+- Glob wildcards (`*`, `?`) are expanded, including quoted globs
+- Quoted paths are supported: `Include "my dir/inc.conf"`
 - `~` and `~user` are expanded to the home directory (`~user` requires `getent`, which is absent in Git Bash on Windows — such an include is silently ignored)
 - Relative paths are resolved against `~/.ssh` (as with a user SSH config)
 - Patterns that match nothing are silently ignored (no error)
@@ -92,7 +101,16 @@ or:
 SSHS_REGEX=1 sshs 'dev_.*master'
 ```
 
-In regex mode, spaces are treated literally (they are not converted to `.*` as in the default multi-word mode). Use an explicit `.*` to match across words.
+In regex mode, spaces are treated literally (they are not converted to `.*` as in the default multi-word mode) and the pattern is **case-sensitive** (safe mode stays case-insensitive). Use an explicit `.*` to match across words.
+
+An invalid regex pattern (e.g. `sshs -r '['`) is reported with an error and exit code 2
+instead of silently returning "not found".
+
+## Host patterns
+
+- `Host *` (catch-all) is never listed — it is not a connectable target
+- Comma-separated patterns (`Host dev,prd`) are listed as separate entries
+- The legacy `Host=alias` syntax is recognized like `Host alias`
 
 ## Result
 
@@ -101,11 +119,21 @@ In regex mode, spaces are treated literally (they are not converted to `.*` as i
 - if <= (size SSHS_MENU) hosts found: Selection menu and connection to the chosen host
 - if > (size SSHS_MENU) results: Show host list and exit
 
+## Exit codes
+
+- `0`: hosts found and handled (connection, list display, or menu cancel — a cancel is a normal end)
+- `1`: no host found (grep-like)
+- `2`: usage error (config file not found or not readable, invalid regex, sourced run)
+- When a connection is made, the exit code of `ssh` itself is propagated (255 = connection failure)
+
 ## Advice
 
-- Source the file `sshs.sh` in `.bashrc`
+- Copy the script to a directory in your `PATH` (e.g. `~/.local/bin/sshs`) and run it
+  directly. Do **not** source it: the script detects a sourced run and aborts with an
+  error (a sourced run would inherit the calling shell's state, e.g. a custom `IFS`,
+  which breaks the parsing).
 - In the `~/.ssh/config` file, add a comment `#` with a description on the line above the `Host`
-  element. This line is used for the search and the list of results displayed by the function.
+  element. This line is used for the search and the list of results displayed by the script.
 - If the comment line contains `sshs-off`, the host is ignored
 
 ## Tests

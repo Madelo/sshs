@@ -2,11 +2,14 @@
 
 # --------------------------------------------------------------------------------------------------
 # sshs: SSH Select (git: https://github.com/Madelo/sshs)
-#   Shell Function to search for a host in the ~/.ssh/config file and connect to it
+#   Shell script to search for a host in the ~/.ssh/config file and connect to it
+#   Must be executed directly, not sourced: a sourced run would inherit the calling shell's
+#   state (e.g. a custom IFS), which breaks the parsing. The script refuses to be sourced.
 # Usage:
 #   - sshs: Shows  the list of hosts in the config file
 #   - sshs [param]: Searches the config file for the corresponding hosts. (ignore case)
-#   - sshs -r [param]: Searches using regex pattern (metacharacters interpreted)
+#   - sshs -r [param]: Searches using regex pattern (metacharacters interpreted,
+#     case-sensitive)
 #   - sshs [params...] [-- ssh_options...]: Pass SSH options after '--' separator
 #     Example: sshs dev master -- -A -p 2222
 # Variable:
@@ -24,12 +27,21 @@
 #   - if 1 host found: Immediate connection
 #   - if <= (size SSHS_MENU) hosts found : Selection menu and connection to the chosen host
 #   - if > (size SSHS_MENU) results: Show host list and exit
+# Exit codes:
+#   - 0: hosts found and handled (connection, list display, or menu cancel)
+#   - 1: no host found (grep-like)
+#   - 2: usage error (config file not found or not readable, invalid regex, sourced run)
+#   - when a connection is made, the exit code of ssh itself is propagated
+#     (255 = connection failure)
 # Advice:
 #   - set the menu choice, example: export SSHS_MENU='12345'
-#   - Source this file in .bashrc
+#   - make the script executable and run it directly (or copy it into your PATH,
+#     e.g. ~/.local/bin/sshs); do NOT source it (see note at the top)
 #   - In  the ~/.ssh/config file, add a comment '#' with a description on the line above the 'Host'
-#     element. This line is used for the search and the list of results displayed by the function.
+#     element. This line is used for the search and the list of results displayed by the script.
 #   - If the comment line contains sshs-off, the host is ignored
+#   - The catch-all 'Host *' entry is never listed (not a connectable target);
+#     comma-separated patterns ('Host dev,prd') are listed as separate hosts
 # --------------------------------------------------------------------------------------------------
 sshs_connect() {
     local host="$1" config="$2"
@@ -68,24 +80,41 @@ sshs_escape_regex() {
 # $search from the caller. 'pline' is local to each file (comment scope).
 # $2 = include depth, guarding against circular includes (ssh caps at 16).
 sshs_read_config() {
-    local file="$1" depth="${2:-0}" line='' pline='' fields=() j
+    local file="$1" depth="${2:-0}" line='' pline='' fields=() j a='' rest='' hay=''
     (( depth > 16 )) && return 0
     while IFS= read -r line || [[ -n "$line" ]]; do
         line="${line%$'\r'}"  # tolerate CRLF line endings
+        # Legacy keyword=value syntax: 'Host=alias' behaves like 'Host alias'
+        if [[ "$line" =~ ^[[:space:]]*[Hh]ost[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            line="Host ${BASH_REMATCH[1]}"
+        fi
         # Include directive: process included files in place
         if [[ "$line" =~ ^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]([[:space:]]+(.*))?$ ]]; then
             sshs_include "${BASH_REMATCH[2]}" "$((depth + 1))"
+            pline=''  # a comment above an 'Include' must not leak onto hosts after it
             continue
         fi
         if [[ "${line,,}" =~ ^[[:space:]]*host[[:space:]] ]]; then
-            if [[ "${pline,,}" != *sshs-off* && "${line,,} ${pline,,}" =~ $search ]]; then
-                read -ra fields <<< "$line"
-                for (( j = 1; j < ${#fields[@]}; j++ )); do
-                    tblHost[i]="${fields[j]}"
-                    tblCom[i]="${pline}"
-                    (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}
-                    (( i++ ))
-                done
+            if [[ "${pline,,}" != *sshs-off* ]]; then
+                # Safe mode is case-insensitive; regex mode is case-sensitive
+                if (( regex )); then hay="$line $pline"; else hay="${line,,} ${pline,,}"; fi
+                if [[ "$hay" =~ $search ]]; then
+                    read -ra fields <<< "$line"
+                    for (( j = 1; j < ${#fields[@]}; j++ )); do
+                        # Comma-separated patterns: one entry per alias
+                        rest="${fields[j]},"
+                        while [[ -n "$rest" ]]; do
+                            a="${rest%%,*}"
+                            rest="${rest#*,}"
+                            # skip empty aliases and the catch-all '*' (not connectable)
+                            [[ -z "$a" || "$a" == "*" ]] && continue
+                            tblHost[i]="$a"
+                            tblCom[i]="${pline}"
+                            (( ${#tblHost[$i]} > hSize )) && hSize=${#tblHost[$i]}
+                            (( i++ ))
+                        done
+                    done
+                fi
             fi
         fi
         if [[ "$line" =~ ^[[:space:]]*# ]]; then pline=${line}
@@ -134,8 +163,17 @@ sshs_include() {
         fi
         # Relative paths are resolved against ~/.ssh (user config)
         [[ "$pat" != /* ]] && pat="$HOME/.ssh/$pat"
-        # Glob-expand in place; patterns that match nothing are silently ignored
-        for g in $pat; do
+        # Glob-expand the pattern in place (a quoted path stays a single token,
+        # so paths with spaces work, quoted globs included). No '--': compgen -G
+        # fails on patterns containing a literal space when '--' is given.
+        # compgen also returns a literal existing path; no match is silently
+        # ignored. sort restores the lexical order of a normal glob expansion
+        # (compgen returns matches in readdir order).
+        local -a matches=()
+        while IFS= read -r g; do
+            [[ -n "$g" ]] && matches+=("$g")
+        done < <(compgen -G "$pat" 2>/dev/null | sort)
+        for g in "${matches[@]}"; do
             [[ -f "$g" ]] && sshs_read_config "$g" "$depth"
         done
     done
@@ -145,6 +183,11 @@ sshs () {
     local tblCom=() tblHost=() i=0 hSize=0 padding=''
     local regex=0
     [[ "$1" == "-r" ]] && { regex=1; shift; }
+    [[ -n "${SSHS_REGEX:-}" ]] && regex=1
+    # Regex mode: match bytes in the C locale so character classes are
+    # deterministic and case-sensitive ([A-Z] never matches lowercase letters;
+    # under a dictionary-collated UTF-8 locale it would).
+    (( regex )) && local LC_ALL=C
     # Split args on "--": before = search terms, after = ssh options
     local search_args=() ssh_opts=() found_sep=0
     for arg in "$@"; do
@@ -158,18 +201,34 @@ sshs () {
             search_args+=("$arg")
         fi
     done
-    local search="${search_args[*]}"; search=${search,,}
+    local search="${search_args[*]}"
     local shown_search="${search:-'.*'}"
-    if (( ! regex )) && [[ -z "${SSHS_REGEX:-}" ]]; then
+    if (( ! regex )); then
+        search=${search,,}
         sshs_escape_regex search "$search"
         search="${search// /.*}"
     fi
     search=${search:-'.*'}
+    # In regex mode, bash's =~ fails silently on an invalid pattern (it simply never
+    # matches), so validate the regex explicitly before parsing.
+    # grep exit codes: 0 = match, 1 = no match, 2 = invalid regex.
+    if (( regex )); then
+        local rc=0
+        grep -Eq "$search" /dev/null 2>/dev/null || rc=$?
+        if (( rc == 2 )); then
+            echo -e "\e[31msshs: invalid regex: '$search'\e[0m" >&2
+            return 2
+        fi
+    fi
     local menu="${SSHS_MENU:-"0123456789"}"
     local config="${SSHS_CONFIG:-"$HOME/.ssh/config"}"
     if [[ ! -f "$config" ]]; then
         echo -e "\e[31msshs: config file not found: ${config}\e[0m" >&2
-        return 1
+        return 2
+    fi
+    if [[ ! -r "$config" ]]; then
+        echo -e "\e[31msshs: config file not readable: ${config}\e[0m" >&2
+        return 2
     fi
 
     sshs_read_config "$config"
@@ -181,6 +240,7 @@ sshs () {
 
     if (( ${#tblHost[@]} == 0 )); then
         echo -e "\e[31m${FUNCNAME[0]}: '$shown_search' not found in ${config}\e[0m"
+        return 1
     elif (( ${#tblHost[@]} == 1 )); then
         sshs_connect "${tblHost[0]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
     elif (( ${#tblHost[@]} <= ${#menu} )); then
@@ -189,10 +249,14 @@ sshs () {
                                        || echo -e "\e[32m${menu:$i:1}\e[0m) ${tblHost[i]}"
         done
         echo -ne "Choose an option (other key to cancel): "; read -rn1 i; echo
-        # Only connect if key is in menu AND within range of available hosts
+        # Only connect if key is in menu AND within range of available hosts.
+        # A cancel (other key / out of bounds) is a normal end: exit 0.
         local idx; sshs_strindex idx "$menu" "$i"
-        [[ "$i" != "" && "$idx" != "-1" && "$idx" -lt "${#tblHost[@]}" ]] && \
+        if [[ "$i" != "" && "$idx" != "-1" && "$idx" -lt "${#tblHost[@]}" ]]; then
             sshs_connect "${tblHost[$idx]//[[:space:]]/}" "$config" "${ssh_opts[@]}"
+            return
+        fi
+        return 0
     else
         for ((i = 0 ; i < ${#tblHost[@]} ; i++)); do
             [[ "${tblCom[i]}" != "" ]] && echo -e "${tblHost[i]}\e[31m ${tblCom[i]}\e[0m" \
@@ -201,4 +265,11 @@ sshs () {
     fi
 }
 
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && sshs "$@"
+# Standalone script only: refuse to be sourced (the calling shell's state, e.g. a
+# custom IFS, would corrupt the parsing). 'return' keeps the sourcing shell alive.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    echo -e "\e[31msshs: this script must be executed directly, not sourced\e[0m" >&2
+    unset -f sshs sshs_connect sshs_strindex sshs_escape_regex sshs_read_config sshs_include
+    return 2
+fi
+sshs "$@"

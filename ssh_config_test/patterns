@@ -1,0 +1,14 @@
+# local, main
+Host real_host
+    HostName 127.0.0.1
+
+Host *
+    AddKeysToAgent yes
+
+# staging, env
+Host stg1,stg2
+    HostName 127.0.0.1
+
+# legacy syntax
+Host=legacy_one
+    HostName 127.0.0.1
